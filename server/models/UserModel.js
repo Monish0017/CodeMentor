@@ -2,15 +2,33 @@ import mongoose from "mongoose";
 
 const userSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true },
-    email: { type: String, required: true, unique: true },
-    password: { type: String },
-    googleId: { type: String },
-    profilePicture: { type: String },
-    role: { type: String, enum: ["admin", "user"], default: "User" },
-    dateJoined: { type: Date, default: Date.now },
-    lastLogin: { type: Date },
-    stats: { type: mongoose.Schema.Types.ObjectId, ref: "UserStats" },
+    username: {
+      type: String,
+      required: true,
+      unique: true,
+    },
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+    },
+    password: {
+      type: String,
+      required: true,
+    },
+    role: {
+      type: String,
+      enum: ["user", "admin"],
+      default: "user",
+    },
+    bio: {
+      type: String,
+      default: "",
+    },
+    avatar: {
+      type: String,
+      default: "",
+    },
   },
   { timestamps: true }
 );

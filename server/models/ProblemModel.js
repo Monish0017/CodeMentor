@@ -15,6 +15,7 @@ const problemSchema = new mongoose.Schema(
     constraints: { type: String },
     leetcodeId: { type: String },
     creatorId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    approved: { type: Boolean, default: false }, // New field to track approval status
   },
   { timestamps: true }
 );

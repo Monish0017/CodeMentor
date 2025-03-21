@@ -7,7 +7,7 @@ import sessionMiddleware from "./middlewares/session.js";
 
 import googleRoutes from "./routes/google.routes.js";
 import aiRoutes from "./routes/ai.routes.js";
-import classroomRoutes from "./routes/classroom.routes.js";
+import userRoute from "./routes/userRoutes.js";
 
 const app = express();
 
@@ -31,11 +31,11 @@ mongoose
 // Routes
 app.use("/api/google", googleRoutes);
 app.use("/api/ai", aiRoutes);
-app.use("/api/classroom", classroomRoutes);
+app.use("/api", userRoute);
 
 // Root route
 app.get("/", (req, res) => {
-  res.send("Google Classroom Sync API is running!");
+  res.send("Code Mentor is woking");
 });
 
 // Error handling middleware
@@ -45,7 +45,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start the server
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
