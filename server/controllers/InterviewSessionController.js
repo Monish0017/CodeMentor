@@ -1,7 +1,11 @@
 import InterviewSession from "../models/InterviewSessionModel.js";
 import User from "../models/UserModel.js";
 
-// Role-based permission checker middleware
+/**
+ * Role-based permission checker middleware
+ * @param {Array} allowedRoles - Roles that are permitted to access the endpoint
+ * @returns {Function} Express middleware function
+ */
 export const checkRolePermission = (allowedRoles) => {
   return async (req, res, next) => {
     try {
@@ -17,28 +21,61 @@ export const checkRolePermission = (allowedRoles) => {
       }
     } catch (error) {
       console.error("Role permission check error:", error);
-      return res.status(500).json({ message: "Server error" });
+      return res
+        .status(500)
+        .json({ message: "Server error", error: error.message });
     }
   };
 };
 
-// Create new interview session
+/**
+ * Create new interview session
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @returns {Object} JSON response with created session or error
+ */
 export const createInterviewSession = async (req, res) => {
   try {
-    const { interviewType, startTime, endTime } = req.body;
+    const { interviewType, startTime, endTime, userId } = req.body;
 
-    // Basic validation
+    // Enhanced validation
     if (!interviewType || !startTime || !endTime) {
       return res
         .status(400)
         .json({ message: "All required fields must be provided" });
     }
 
+    // Validate date formats
+    const startDate = new Date(startTime);
+    const endDate = new Date(endTime);
+
+    if (isNaN(startDate) || isNaN(endDate)) {
+      return res.status(400).json({ message: "Invalid date format provided" });
+    }
+
+    // Validate start time is before end time
+    if (startDate >= endDate) {
+      return res
+        .status(400)
+        .json({ message: "End time must be after start time" });
+    }
+
+    // Validate interview type
+    const validInterviewTypes = [
+      "Technical",
+      "HR",
+      "System Design",
+      "Behavioral",
+    ];
+    if (!validInterviewTypes.includes(interviewType)) {
+      return res.status(400).json({ message: "Invalid interview type" });
+    }
+
     const newSession = new InterviewSession({
-      userId: req.body.userId || req.user.id, // Admin can create for others
+      userId: userId || req.user.id, // Admin can create for others
       interviewType,
-      startTime: new Date(startTime),
-      endTime: new Date(endTime),
+      startTime: startDate,
+      endTime: endDate,
       status: "Pending",
     });
 
@@ -51,14 +88,25 @@ export const createInterviewSession = async (req, res) => {
     console.error("Create interview session error:", error);
     return res
       .status(500)
-      .json({ message: "Failed to create interview session" });
+      .json({
+        message: "Failed to create interview session",
+        error: error.message,
+      });
   }
 };
 
-// Get all interview sessions
+/**
+ * Get all interview sessions with optional filtering
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @returns {Object} JSON response with session list or error
+ */
 export const getAllInterviewSessions = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
     let query = {};
 
@@ -75,6 +123,10 @@ export const getAllInterviewSessions = async (req, res) => {
 
     // Status filtering
     if (req.query.status) {
+      const validStatuses = ["Pending", "In Progress", "Completed"];
+      if (!validStatuses.includes(req.query.status)) {
+        return res.status(400).json({ message: "Invalid status filter" });
+      }
       query.status = req.query.status;
     }
 
@@ -83,24 +135,45 @@ export const getAllInterviewSessions = async (req, res) => {
       query.interviewType = req.query.interviewType;
     }
 
+    // Pagination
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
     const sessions = await InterviewSession.find(query)
       .sort({ startTime: -1 })
+      .skip(skip)
+      .limit(limit)
       .populate("userId", "name email");
+
+    // Get total count for pagination
+    const totalCount = await InterviewSession.countDocuments(query);
 
     return res.status(200).json({
       success: true,
       count: sessions.length,
+      totalCount,
+      totalPages: Math.ceil(totalCount / limit),
+      currentPage: page,
       data: sessions,
     });
   } catch (error) {
     console.error("Get all interview sessions error:", error);
     return res
       .status(500)
-      .json({ message: "Failed to retrieve interview sessions" });
+      .json({
+        message: "Failed to retrieve interview sessions",
+        error: error.message,
+      });
   }
 };
 
-// Get interview session by ID
+/**
+ * Get interview session by ID
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @returns {Object} JSON response with session data or error
+ */
 export const getInterviewSessionById = async (req, res) => {
   try {
     const session = await InterviewSession.findById(req.params.id).populate(
@@ -134,7 +207,12 @@ export const getInterviewSessionById = async (req, res) => {
   }
 };
 
-// Update interview session
+/**
+ * Update interview session
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @returns {Object} JSON response with updated session or error
+ */
 export const updateInterviewSession = async (req, res) => {
   try {
     const session = await InterviewSession.findById(req.params.id);
@@ -163,6 +241,32 @@ export const updateInterviewSession = async (req, res) => {
         .json({ message: "Only interviewers can provide feedback" });
     }
 
+    // Validate date formats if provided
+    if (req.body.startTime) {
+      const startDate = new Date(req.body.startTime);
+      if (isNaN(startDate)) {
+        return res.status(400).json({ message: "Invalid start time format" });
+      }
+      req.body.startTime = startDate;
+    }
+
+    if (req.body.endTime) {
+      const endDate = new Date(req.body.endTime);
+      if (isNaN(endDate)) {
+        return res.status(400).json({ message: "Invalid end time format" });
+      }
+      req.body.endTime = endDate;
+    }
+
+    // Check that start time is before end time if both are provided
+    if (req.body.startTime && req.body.endTime) {
+      if (req.body.startTime >= req.body.endTime) {
+        return res
+          .status(400)
+          .json({ message: "End time must be after start time" });
+      }
+    }
+
     const updatedSession = await InterviewSession.findByIdAndUpdate(
       req.params.id,
       req.body,
@@ -177,11 +281,19 @@ export const updateInterviewSession = async (req, res) => {
     console.error("Update interview session error:", error);
     return res
       .status(500)
-      .json({ message: "Failed to update interview session" });
+      .json({
+        message: "Failed to update interview session",
+        error: error.message,
+      });
   }
 };
 
-// Delete interview session
+/**
+ * Delete interview session
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @returns {Object} JSON response with success message or error
+ */
 export const deleteInterviewSession = async (req, res) => {
   try {
     const session = await InterviewSession.findById(req.params.id);
@@ -211,13 +323,26 @@ export const deleteInterviewSession = async (req, res) => {
   }
 };
 
-// Update session status
+/**
+ * Update session status
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @returns {Object} JSON response with updated status or error
+ */
 export const updateSessionStatus = async (req, res) => {
   try {
     const { status } = req.body;
+    const validStatuses = ["Pending", "In Progress", "Completed"];
 
-    if (!["Pending", "In Progress", "Completed"].includes(status)) {
-      return res.status(400).json({ message: "Invalid status value" });
+    if (!status) {
+      return res.status(400).json({ message: "Status is required" });
+    }
+
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        message: "Invalid status value",
+        validOptions: validStatuses,
+      });
     }
 
     const session = await InterviewSession.findById(req.params.id);
@@ -234,6 +359,10 @@ export const updateSessionStatus = async (req, res) => {
     }
 
     session.status = status;
+    // Record who made the status change and when
+    session.lastUpdatedBy = req.user.id;
+    session.lastUpdateTime = new Date();
+
     await session.save();
 
     return res.status(200).json({
@@ -242,6 +371,9 @@ export const updateSessionStatus = async (req, res) => {
     });
   } catch (error) {
     console.error("Update session status error:", error);
-    return res.status(500).json({ message: "Failed to update session status" });
+    return res.status(500).json({
+      message: "Failed to update session status",
+      error: error.message,
+    });
   }
 };
